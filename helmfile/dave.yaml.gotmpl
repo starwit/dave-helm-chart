@@ -1,0 +1,203 @@
+repositories:
+  - name: starwitorg
+    url: registry-1.docker.io/starwitorg
+    oci: true
+
+helmDefaults:
+  wait: true
+
+environments:
+  default:
+    values:
+      - namespace: dave
+        hostname: cluster.local
+        tls: false
+        components:
+          keycloak: false
+          dave_backend: true
+          dave_database: true
+          dave_frontend: true
+          dave_adminportal: true
+        auth:
+          enabled: false
+          realmname: realmname
+          keycloak_admin_pw: adminUserPw
+          keycloak_db_password: {{ requiredEnv "KEYCLOAK_DB_PW" }}
+          clientId: testClientId
+          clientSecret: testClientSecret
+          realmAdminPw: adminUserPw
+        dave:
+          dave_db_password: "dave_pw"
+
+---
+releases:
+  - name: config-data
+    namespace: {{ .Values.namespace }}
+    chart: ./config-data
+    installed: true
+    values:
+      - config-data/values.gotmpl
+
+  - name: backend
+    installed: {{ .Values.components.dave_backend }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-backend-chart
+    version: "3.0.1-SNAPSHOT"
+    needs: 
+      - config-data
+      - dave-db
+    values:
+      - image:
+          tag: "3.0.1-SNAPSHOT-15"
+        app:
+          db_schema: dave
+          spring:
+            profile:
+              active: "no-security, prod"
+          datasource:
+            url: "jdbc:postgresql://postgres-chart-dave-db:5432/dave"
+            username: dave
+            password: {{ .Values.dave.dave_db_password }} 
+
+  - name: dave-db
+    installed: {{ .Values.components.dave_database }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/postgres-chart
+    version: 1.2.6
+    values:
+      - persistence:
+          enabled: true
+          size: 20Gi
+        init:
+          enabled: true
+          init_user_db: |
+            -- Create schemata, users and extenions
+            CREATE USER dave WITH PASSWORD '{{ .Values.dave.dave_db_password }}';
+            SELECT 'CREATE DATABASE dave owner dave' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'dave')\gexec
+
+          init_tables: |  
+            -- empty
+
+  - name: frontend
+    installed: {{ .Values.components.dave_frontend }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-frontend-chart
+    version: 3.0.1-SNAPSHOT
+    needs: 
+      - backend
+    values:
+      - image:
+          tag: "3.0.1-SNAPSHOT-6"
+        app:
+          spring:
+            profile:
+              active: "no-security, prod"
+
+  - name: adminportal
+    installed: {{ .Values.components.dave_adminportal }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-admin-portal-chart
+    version: 3.0.1-SNAPSHOT
+    needs: 
+      - backend
+    values:
+      - image:
+          tag: "3.0.1-SNAPSHOT-17"
+        app:
+          spring:
+            profile:
+              active: "no-security, prod"
+
+  - name: keycloak
+    installed: {{ .Values.components.keycloak }}
+    namespace: {{ .Values.namespace }}
+    chart: oci://ghcr.io/codecentric/helm-charts/keycloakx
+    version: 7.1.5
+    values:
+      - database:
+          vendor: postgres
+          hostname: postgres-chart-keycloakdb.{{ .Values.namespace }}.svc.cluster.local
+          port: 5432
+          username: keycloak
+          password: '{{ .Values.auth.keycloak_db_password }}'
+          database: keycloak
+        command:
+          - "/opt/keycloak/bin/kc.sh"
+          - "start"
+          - "--http-port=8080"
+          - "--http-management-port=9000"
+          - "--hostname-strict=false"
+          - "--import-realm"
+          - "--proxy-headers=xforwarded"
+          - "--http-management-relative-path=/admin"
+        extraEnv: |
+          - name: KC_BOOTSTRAP_ADMIN_USERNAME
+            value: admin
+          - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+            value: {{ .Values.auth.keycloak_db_password }}
+          - name: KC_HOSTNAME
+            value: auth.{{ .Values.hostname }}
+          - name: KC_HOSTNAME_URL
+            value: http://auth.{{ .Values.hostname }}
+          - name: KC_HOSTNAME_ADMIN_URL
+            value: http://auth-console.{{ .Values.hostname }}
+          - name: JAVA_OPTS_APPEND
+            value: >-
+              -Djgroups.dns.query=keycloak-headless
+        extraVolumes: |
+          - name: realm-import
+            configMap:
+              name: realm-import
+        extraVolumeMounts: |
+          - name: realm-import
+            mountPath: "/opt/keycloak/data/import/"
+            readOnly: true
+        ingress:
+          enabled: true
+          rules:
+          - host: auth.{{ .Values.hostname }}
+            paths:
+              - path: /
+                pathType: Prefix
+          console:
+            enabled: true
+            rules:
+            - host: kcconsole.{{ .Values.hostname }}
+              paths:
+                - path: /admin
+                  pathType: Prefix
+        readinessProbe: |
+          httpGet:
+            path: '/admin/health/ready'
+            port: 'http-internal'
+        livenessProbe: |
+          httpGet:
+            path: '/admin/health/live'
+            port: 'http-internal'
+        startupProbe: |
+          httpGet:
+            path: '/admin/health/started'
+            port: 'http-internal'
+
+  - name: keycloakdb
+    installed: {{ .Values.components.keycloak }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/postgres-chart
+    version: 1.2.6
+    values:
+      - init:
+          enabled: true
+          init_user_db: |
+            -- Create schemata, users and extenions
+            CREATE USER keycloak WITH PASSWORD '{{ .Values.auth.keycloak_db_password }}';
+            SELECT 'CREATE DATABASE keycloak owner keycloak' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')\gexec
+
+          init_tables: |  
+            -- empty
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
