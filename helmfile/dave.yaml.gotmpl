@@ -37,6 +37,7 @@ environments:
           dave_database: true
           dave_frontend: true
           dave_adminportal: true
+          dave_selfservice: true
         auth:
           keycloak_host: auth-ng.staging.data-wolfsburg.de
           realmname: {{ requiredEnv "REALM_NAME" }}
@@ -88,7 +89,7 @@ releases:
       - dave-db
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-16"
+          tag: "3.0.1-SNAPSHOT-18"
         app:
           db_schema: dave
           spring:
@@ -224,3 +225,46 @@ releases:
             - secretName: adminportal.{{ .Values.hostname }}
               hosts:
                 - adminportal.{{ .Values.hostname }}
+
+  - name: selfservice
+    installed: {{ .Values.components.dave_selfservice }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-selfservice-chart
+    version: 3.0.1-SNAPSHOT
+    needs: 
+      - backend
+    values:
+      - image:
+          tag: "3.0.1-SNAPSHOT-1"
+        app:
+          spring:
+            profile:
+              active: "prod"
+            routes:
+              SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
+              SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
+          auth:
+            enabled: true
+            client:
+              registration:
+                keycloak:
+                  authorization_grant_type: authorization_code
+                  client_secret: {{ .Values.auth.clientSecret }}
+                  client_id: {{ .Values.auth.clientId  }}
+              provider:
+                mykeycloak:
+                  issuer_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}
+        ingress:
+          enabled: true
+          className: "traefik"
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: selfservice.{{ .Values.hostname }}
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - secretName: selfservice.{{ .Values.hostname }}
+              hosts:
+                - selfservice.{{ .Values.hostname }}
