@@ -4,8 +4,11 @@
 
 hostname: {{ .Values.hostname }}
 tls: {{ .Values.tls }}
+
+passwords:
+  dave_db_password: {{ .Values.dave.dave_db_password }}
+
 auth:
   realmname: {{ .Values.auth.realmname }}
   clientId: {{ .Values.auth.clientId }}
   clientSecret: {{ .Values.auth.clientSecret }}
-  realmAdminPw: {{ .Values.auth.realmAdminPw }}

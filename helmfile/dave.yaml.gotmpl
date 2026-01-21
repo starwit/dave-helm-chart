@@ -13,21 +13,38 @@ environments:
         hostname: cluster.local
         tls: false
         components:
-          keycloak: false
+          landing_page: true
           dave_backend: true
           dave_database: true
           dave_frontend: true
           dave_adminportal: true
         auth:
-          enabled: false
           realmname: realmname
-          keycloak_admin_pw: adminUserPw
-          keycloak_db_password: {{ requiredEnv "KEYCLOAK_DB_PW" }}
           clientId: testClientId
           clientSecret: testClientSecret
-          realmAdminPw: adminUserPw
         dave:
           dave_db_password: "dave_pw"
+          github_token: test
+
+  remote:
+    values:
+      - namespace: dave
+        hostname: {{ requiredEnv "HOSTNAME" }}
+        tls: true
+        components:
+          landing_page: true
+          dave_backend: true
+          dave_database: true
+          dave_frontend: true
+          dave_adminportal: true
+        auth:
+          keycloak_host: auth-ng.staging.data-wolfsburg.de
+          realmname: {{ requiredEnv "REALM_NAME" }}
+          clientId: dave
+          clientSecret: {{ requiredEnv "CLIENT_SECRET" }}
+        dave:
+          dave_db_password: {{ requiredEnv "DAVE_DB_PW" }}
+          github_token: {{ requiredEnv "GITHUB_TOKEN" }}
 
 ---
 releases:
@@ -37,6 +54,29 @@ releases:
     installed: true
     values:
       - config-data/values.gotmpl
+
+  - name: landingpage
+    installed: {{ .Values.components.landing_page }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/httpd-git-chart
+    version: 2.4.66
+    values:
+      - repoUrl: https://github.com/starwit/dave-landing.git
+        accessToken: {{ .Values.dave.github_token }}
+        ingress:
+          enabled: true
+          className: "traefik"
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: {{ .Values.hostname }}
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - secretName: {{ .Values.hostname }}
+              hosts:
+                - {{ .Values.hostname  }}
 
   - name: backend
     installed: {{ .Values.components.dave_backend }}
@@ -48,16 +88,37 @@ releases:
       - dave-db
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-15"
+          tag: "3.0.1-SNAPSHOT-16"
         app:
           db_schema: dave
           spring:
             profile:
-              active: "no-security, prod"
+              active: "prod"
           datasource:
             url: "jdbc:postgresql://postgres-chart-dave-db:5432/dave"
             username: dave
             password: {{ .Values.dave.dave_db_password }} 
+          auth:
+            enabled: true
+            client:
+              registration:
+                keycloak:
+                  scope: openid
+                  authorization_grant_type: client_credentials
+                  client_authentication_method: client_secret_post
+                  provider: mykeycloak
+                  client_secret: {{ .Values.auth.clientSecret }}
+                  client_id: {{ .Values.auth.clientId  }}
+              provider:
+                mykeycloak:
+                  issuer_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}
+                  token_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/token
+            resourceserver:
+              jwt:
+                jwk_set_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/certs
+                issuer_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}
+            resource:
+              user_info_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
 
   - name: dave-db
     installed: {{ .Values.components.dave_database }}
@@ -87,11 +148,39 @@ releases:
       - backend
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-6"
+          tag: "3.0.1-SNAPSHOT-7"
         app:
           spring:
             profile:
-              active: "no-security, prod"
+              active: "prod"
+            routes:
+              SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
+              SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
+          auth:
+            enabled: true
+            client:
+              registration:
+                keycloak:
+                  authorization_grant_type: authorization_code
+                  client_secret: {{ .Values.auth.clientSecret }}
+                  client_id: {{ .Values.auth.clientId  }}
+              provider:
+                mykeycloak:
+                  issuer_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}
+        ingress:
+          enabled: true
+          className: "traefik"
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: frontend.{{ .Values.hostname }}
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - secretName: frontend.{{ .Values.hostname }}
+              hosts:
+                - frontend.{{ .Values.hostname }}
 
   - name: adminportal
     installed: {{ .Values.components.dave_adminportal }}
@@ -102,102 +191,36 @@ releases:
       - backend
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-17"
+          tag: "3.0.1-SNAPSHOT-19"
         app:
           spring:
             profile:
-              active: "no-security, prod"
-
-  - name: keycloak
-    installed: {{ .Values.components.keycloak }}
-    namespace: {{ .Values.namespace }}
-    chart: oci://ghcr.io/codecentric/helm-charts/keycloakx
-    version: 7.1.5
-    values:
-      - database:
-          vendor: postgres
-          hostname: postgres-chart-keycloakdb.{{ .Values.namespace }}.svc.cluster.local
-          port: 5432
-          username: keycloak
-          password: '{{ .Values.auth.keycloak_db_password }}'
-          database: keycloak
-        command:
-          - "/opt/keycloak/bin/kc.sh"
-          - "start"
-          - "--http-port=8080"
-          - "--http-management-port=9000"
-          - "--hostname-strict=false"
-          - "--import-realm"
-          - "--proxy-headers=xforwarded"
-          - "--http-management-relative-path=/admin"
-        extraEnv: |
-          - name: KC_BOOTSTRAP_ADMIN_USERNAME
-            value: admin
-          - name: KC_BOOTSTRAP_ADMIN_PASSWORD
-            value: {{ .Values.auth.keycloak_db_password }}
-          - name: KC_HOSTNAME
-            value: auth.{{ .Values.hostname }}
-          - name: KC_HOSTNAME_URL
-            value: http://auth.{{ .Values.hostname }}
-          - name: KC_HOSTNAME_ADMIN_URL
-            value: http://auth-console.{{ .Values.hostname }}
-          - name: JAVA_OPTS_APPEND
-            value: >-
-              -Djgroups.dns.query=keycloak-headless
-        extraVolumes: |
-          - name: realm-import
-            configMap:
-              name: realm-import
-        extraVolumeMounts: |
-          - name: realm-import
-            mountPath: "/opt/keycloak/data/import/"
-            readOnly: true
+              active: "prod"
+            routes:
+              SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
+              SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
+          auth:
+            enabled: true
+            client:
+              registration:
+                keycloak:
+                  authorization_grant_type: authorization_code
+                  client_secret: {{ .Values.auth.clientSecret }}
+                  client_id: {{ .Values.auth.clientId  }}
+              provider:
+                mykeycloak:
+                  issuer_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}
         ingress:
           enabled: true
-          rules:
-          - host: auth.{{ .Values.hostname }}
-            paths:
-              - path: /
-                pathType: Prefix
-          console:
-            enabled: true
-            rules:
-            - host: kcconsole.{{ .Values.hostname }}
+          className: "traefik"
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: adminportal.{{ .Values.hostname }}
               paths:
-                - path: /admin
-                  pathType: Prefix
-        readinessProbe: |
-          httpGet:
-            path: '/admin/health/ready'
-            port: 'http-internal'
-        livenessProbe: |
-          httpGet:
-            path: '/admin/health/live'
-            port: 'http-internal'
-        startupProbe: |
-          httpGet:
-            path: '/admin/health/started'
-            port: 'http-internal'
-
-  - name: keycloakdb
-    installed: {{ .Values.components.keycloak }}
-    namespace: {{ .Values.namespace }}
-    chart: starwitorg/postgres-chart
-    version: 1.2.6
-    values:
-      - init:
-          enabled: true
-          init_user_db: |
-            -- Create schemata, users and extenions
-            CREATE USER keycloak WITH PASSWORD '{{ .Values.auth.keycloak_db_password }}';
-            SELECT 'CREATE DATABASE keycloak owner keycloak' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')\gexec
-
-          init_tables: |  
-            -- empty
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - secretName: adminportal.{{ .Values.hostname }}
+              hosts:
+                - adminportal.{{ .Values.hostname }}
