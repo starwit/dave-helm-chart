@@ -17,8 +17,8 @@ environments:
           landing_page: true
           dave_backend: true
           dave_database: true
-          dave_frontend: false
-          dave_adminportal: false
+          dave_frontend: true
+          dave_adminportal: true
           dave_selfservice: false
         auth:
           enabled: false
@@ -129,6 +129,7 @@ releases:
         extraEnvVars:
           TZ: "Europe/Berlin"
           SPRING_FLYWAY_LOCATIONS: classpath:db/migration, classpath:data2
+          SPRING_JPA_HIBERNATE_NAMING_PHYSICAL_STRATEGY: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
 
   - name: dave-db
     installed: {{ .Values.components.dave_database }}
@@ -153,21 +154,21 @@ releases:
     installed: {{ .Values.components.dave_frontend }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-frontend-chart
-    version: 3.0.1-SNAPSHOT
+    version: 5.0.0
     needs: 
       - backend
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-7"
+          tag: "5.0.0"
         app:
           spring:
             profile:
-              active: "prod"
+              active: {{ .Values.profiles }}
             routes:
               SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
               SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
           auth:
-            enabled: true
+            enabled: {{ .Values.auth.enabled }}
             client:
               registration:
                 keycloak:
@@ -196,16 +197,16 @@ releases:
     installed: {{ .Values.components.dave_adminportal }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-admin-portal-chart
-    version: 3.0.1-SNAPSHOT
+    version: 5.0.3
     needs: 
       - backend
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-19"
+          tag: "5.0.3"
         app:
           spring:
             profile:
-              active: "prod"
+              active: {{ .Values.profiles }}
             routes:
               SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
               SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
@@ -248,12 +249,12 @@ releases:
         app:
           spring:
             profile:
-              active: "prod"
+              active: {{ .Values.profiles }}
             routes:
               SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://keycloak-keycloakx-http.auth-ng/
               SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0: RewritePath=/api/sso/userinfo, /auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/userinfo
           auth:
-            enabled: true
+            enabled: {{ .Values.auth.enabled }}
             client:
               registration:
                 keycloak:
