@@ -19,7 +19,7 @@ environments:
           dave_database: true
           dave_frontend: true
           dave_adminportal: true
-          dave_selfservice: false
+          dave_selfservice: true
         auth:
           enabled: false
           keycloak_host: auth.cluster.local
@@ -240,12 +240,12 @@ releases:
     installed: {{ .Values.components.dave_selfservice }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-selfservice-chart
-    version: 3.0.1-SNAPSHOT
+    version: 5.0.0
     needs: 
       - backend
     values:
       - image:
-          tag: "3.0.1-SNAPSHOT-1"
+          tag: "5.0.0"
         app:
           spring:
             profile:
