@@ -89,13 +89,13 @@ releases:
     installed: {{ .Values.components.dave_backend }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-backend-chart
-    version: "5.0.3"
+    version: "5.0.5"
     needs: 
       - config-data
       - dave-db
     values:
       - image:
-          tag: "dave-backend-5.0.3"
+          tag: "5.0.5"
         app:
           db_schema: dave
           spring:
