@@ -20,15 +20,22 @@ environments:
           dave_frontend: true
           dave_adminportal: true
           dave_selfservice: true
+          dave_adapter: true
         auth:
           enabled: false
           keycloak_host: auth.cluster.local
           realmname: realmname
           clientId: testClientId
           clientSecret: testClientSecret
+          apiuser: api.user
+          apiuser_password: {{ requiredEnv "IDP_PASSWORD" }}
         dave:
           dave_db_password: "dave_pw"
           github_token: test
+        analytics:
+          url: jdbc:postgresql://wob-tsp-staging-k3s:30001/analytics
+          username: {{ requiredEnv "ANALYTICS_PASSWORD" }}
+          password: {{ requiredEnv "ANALYTICS_USERNAME" }}
 
   remote:
     values:
@@ -43,15 +50,22 @@ environments:
           dave_frontend: true
           dave_adminportal: true
           dave_selfservice: true
+          dave_adapter: true
         auth:
           enabled: true
           keycloak_host: auth-ng.staging.data-wolfsburg.de
           realmname: {{ requiredEnv "REALM_NAME" }}
           clientId: dave
           clientSecret: {{ requiredEnv "CLIENT_SECRET" }}
+          apiuser: {{ requiredEnv "IDP_USERNAME" }}
+          apiuser_password: {{ requiredEnv "IDP_PASSWORD" }}
         dave:
           dave_db_password: {{ requiredEnv "DAVE_DB_PW" }}
           github_token: {{ requiredEnv "GITHUB_TOKEN" }}
+        analytics:
+          url: jdbc:postgresql://100.112.168.104:30001/analytics
+          username: {{ requiredEnv "ANALYTICS_PASSWORD" }}
+          password: {{ requiredEnv "ANALYTICS_USERNAME" }}
 
 ---
 releases:
@@ -278,3 +292,47 @@ releases:
             - secretName: selfservice.{{ .Values.hostname }}
               hosts:
                 - selfservice.{{ .Values.hostname }}
+  - name: dave-adapter
+    installed: {{ .Values.components.dave_adapter }}
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-adapter-chart
+    version: 5.0.1
+    needs:
+      - backend
+    values:
+      - image:
+          tag: "5.0.1"
+        app:
+          dave_url: http://backend:8080/detector/save-latest-detections
+          mapping:
+            file: mapping.json
+            content: |
+              [
+                {
+                  "observationAreaId": "9",
+                  "daveCountingId": "442984fa-3b79-4b85-ab8d-ebf5e07c5a42",
+                  "intersectionMapping": {
+                      "dave-meckauer-nordost" : "1",
+                      "dave-meckauer-nordwest" : "2",
+                      "dave-meckauer-sued" : "3",
+                      "dave-meckauer-ost" : "4",
+                      "5" : "",
+                      "6" : "",
+                      "7" : "",
+                      "8" : ""
+                  }
+                }
+              ]
+          auth: 
+            enabled: {{ .Values.auth.enabled }}
+            tokenurl: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/token
+            clientid: {{ .Values.auth.clientId  }}
+            username: {{ .Values.auth.apiuser }}
+            password: {{ .Values.auth.apiuser_password }}
+        analytics_db:
+          url: {{ .Values.analytics.url }}
+          username: {{ .Values.analytics.username }}
+          password: {{ .Values.analytics.password }}
+        #extraEnv: |
+        #  - name: LOGGING_LEVEL_ROOT
+        #    value: DEBUG
