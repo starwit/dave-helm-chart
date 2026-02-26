@@ -27,8 +27,8 @@ environments:
           realmname: realmname
           clientId: testClientId
           clientSecret: testClientSecret
-          apiuser: api.user
-          apiuser_password: {{ requiredEnv "IDP_PASSWORD" }}
+          api_client_id: dave_api
+          api_client_secret: {{ requiredEnv "API_CLIENT_SECRET" }}
         dave:
           dave_db_password: "dave_pw"
           github_token: test
@@ -57,8 +57,8 @@ environments:
           realmname: {{ requiredEnv "REALM_NAME" }}
           clientId: dave
           clientSecret: {{ requiredEnv "CLIENT_SECRET" }}
-          apiuser: {{ requiredEnv "IDP_USERNAME" }}
-          apiuser_password: {{ requiredEnv "IDP_PASSWORD" }}
+          api_client_id: {{ requiredEnv "API_CLIENT_ID" }}
+          api_client_secret: {{ requiredEnv "API_CLIENT_SECRET" }}
         dave:
           dave_db_password: {{ requiredEnv "DAVE_DB_PW" }}
           github_token: {{ requiredEnv "GITHUB_TOKEN" }}
@@ -111,7 +111,7 @@ releases:
       - image:
           tag: "5.0.5"
         app:
-          db_schema: dave
+          db_schema: public
           spring:
             profile:
               active: {{ .Values.profiles }}
@@ -144,6 +144,9 @@ releases:
           TZ: "Europe/Berlin"
           SPRING_FLYWAY_LOCATIONS: classpath:db/migration, classpath:data2
           SPRING_JPA_HIBERNATE_NAMING_PHYSICAL_STRATEGY: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+          #LOGGING_LEVEL_DE_MUENCHEN_DAVE: DEBUG
+          #LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: DEBUG
+          #LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: DEBUG
 
   - name: dave-db
     installed: {{ .Values.components.dave_database }}
@@ -292,16 +295,17 @@ releases:
             - secretName: selfservice.{{ .Values.hostname }}
               hosts:
                 - selfservice.{{ .Values.hostname }}
+
   - name: dave-adapter
     installed: {{ .Values.components.dave_adapter }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-adapter-chart
-    version: 5.0.1
+    version: 5.0.3
     needs:
       - backend
     values:
       - image:
-          tag: "5.0.1"
+          tag: "5.0.3"
         app:
           dave_url: http://backend:8080/detector/save-latest-detections
           mapping:
@@ -310,7 +314,7 @@ releases:
               [
                 {
                   "observationAreaId": "9",
-                  "daveCountingId": "442984fa-3b79-4b85-ab8d-ebf5e07c5a42",
+                  "daveCountingId": "339f992e-0925-4f6d-9e75-099bc520ad2c",
                   "intersectionMapping": {
                       "dave-meckauer-nordost" : "1",
                       "dave-meckauer-nordwest" : "2",
@@ -325,14 +329,22 @@ releases:
               ]
           auth: 
             enabled: {{ .Values.auth.enabled }}
-            tokenurl: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/token
-            clientid: {{ .Values.auth.clientId  }}
-            username: {{ .Values.auth.apiuser }}
-            password: {{ .Values.auth.apiuser_password }}
+        spring:
+          security:
+            oauth2:
+              client:
+                registration:
+                  daveclient:
+                    client_id: {{ .Values.auth.api_client_id  }}
+                    client_secret: {{ .Values.auth.api_client_secret  }}
+                provider:
+                  daveprovider:
+                    token_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/token
         analytics_db:
           url: {{ .Values.analytics.url }}
           username: {{ .Values.analytics.username }}
           password: {{ .Values.analytics.password }}
-        #extraEnv: |
+        extraEnv: |          
         #  - name: LOGGING_LEVEL_ROOT
         #    value: DEBUG
+
