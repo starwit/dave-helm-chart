@@ -133,5 +133,72 @@ services:
       timeout: 5s
       retries: 120
 
+  dave-adminportal:
+    container_name: dave-adminportal
+    image: starwitorg/dave-adminportal:5.1.0
+    environment:
+      SPRING_PROFILES_ACTIVE: local, no-security
+      SPRING_CLOUD_GATEWAY_ROUTES_0_ID: backend
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://dave-backend:8080/
+      SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0: Path=/api/dave-backend-service/**
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_NAME: Retry
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_RETRIES: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_METHODS: GET,POST
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FIRSTBACKOFF: 10ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_MAXBACKOFF: 50ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FACTOR: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_BASEDONPREVIOUSVALUE: "false"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_NAME: RewritePath
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REGEXP: /api/dave-backend-service/(?<urlsegments>.*)
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REPLACEMENT: /$\{urlsegments}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_NAME: RemoveResponseHeader
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_ARGS_NAME: WWW-Authenticate
+    ports:
+      - "8083:8083"
+    depends_on:
+      dave-backend:
+        condition: service_healthy
+    pull_policy: if_not_present
+    restart: on-failure
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://dave-adminportal:8083/actuator/health || exit 1" ]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+
+  dave-selfserviceportal:
+    container_name: dave-selfservice
+    image: starwitorg/dave-selfservice:5.0.0
+    environment:
+      SPRING_PROFILES_ACTIVE: local, no-security
+      SPRING_CLOUD_GATEWAY_ROUTES_0_ID: backend
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://dave-backend:8080/
+      SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0: Path=/api/dave-backend-service/**
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_NAME: Retry
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_RETRIES: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_METHODS: GET,POST
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FIRSTBACKOFF: 10ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_MAXBACKOFF: 50ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FACTOR: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_BASEDONPREVIOUSVALUE: "false"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_NAME: RewritePath
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REGEXP: /api/dave-backend-service/(?<urlsegments>.*)
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REPLACEMENT: /$\{urlsegments}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_NAME: RemoveResponseHeader
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_ARGS_NAME: WWW-Authenticate
+    ports:
+      - "8084:8084"
+    depends_on:
+      dave-backend:
+        condition: service_healthy
+    pull_policy: if_not_present
+    restart: on-failure
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://dave-selfserviceportal:8084/actuator/health || exit 1" ]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+
+
 volumes:
   pg_data:
