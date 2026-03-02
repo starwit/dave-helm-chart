@@ -49,27 +49,44 @@ services:
     container_name: dave-backend
     image: starwitorg/dave-backend:5.1.0
     environment:
-      - APP_SCAN_PACKAGES="org.springframework.data.jpa.convert.threeten, de.muenchen.dave, de.muenchen.relationalimpl"
-      - DB_SCHEMA=public
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-dave:5432/dave-db
-      - SPRING_DATASOURCE_USERNAME=dave
-      - SPRING_DATASOURCE_PASSWORD=1234
-      - SPRING_PROFILES_ACTIVE=local,no-security
-      - SSO_BASE_URL=http://sso.de
-      - ELASTICSEARCH_HOST=https://elastic:9200
-      - ELASTICSEARCH_PORT=9200
-      - DAVE_ZAEHLUNG_STATUS_UPDATER=0 0 * 1/1 * ?
-      - DAVE_EMAIL_SENDER_HOSTNAME=localhost
-      - DAVE_EMAIL_ADDRESS=test@example.com
-      - DAVE_EMAIL_PASSWORD=password
-      - DAVE_EMAIL_URL_ADMINPORTAL=http://localhost:8085
-      - DAVE_EMAIL_URL_SELFSERVICEPORTAL=http://localhost:8086
-      - DAVE_EMAIL_RECEIVER_UPDATE_INTERVAL=50000000000
-      - DAVE_EMAIL_RECEIVER_HOSTNAME=imap.de
-      - DAVE_MESSSTELLE_CRON=0 0 * 1/1 * ?
-      - DAVE_MESSSTELLE_SHEDLOCK=4m
-      - DAVE_REPORTS_LOGO_ICON=classpath:/pdf/images/kindl.jpg
-      - DAVE_REPORTS_LOGO_SUBTITLE=Landeshauptstadt<br/>München<br/><b>Mobilitätsreferat</b>
+      DB_SCHEMA: public
+      APP_SCAN_PACKAGES: org.springframework.data.jpa.convert.threeten,de.muenchen.dave,de.muenchen.relationalimpl
+      SPRING_PROFILES_ACTIVE: local, no-security
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration,org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+            
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-dave:5432/dave-db
+      SPRING_DATASOURCE_USERNAME: dave
+      SPRING_DATASOURCE_PASSWORD: 1234
+
+      SPRING_JPA_SHOW_SQL: false
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 10MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 10MB
+
+      DAVE_ZAEHLUNG_STATUS_UPDATER: 0 0 * 1/1 * ?
+      DAVE_EMAIL_SENDER_HOSTNAME: localhost
+      DAVE_EMAIL_ADDRESS: test@example.com
+      DAVE_EMAIL_PASSWORD: password
+      DAVE_EMAIL_URL_ADMINPORTAL: http://localhost:8085
+      DAVE_EMAIL_URL_SELFSERVICEPORTAL: http://localhost:8086
+      DAVE_EMAIL_RECEIVER_UPDATE_INTERVAL: 50000000000
+      DAVE_EMAIL_RECEIVER_HOSTNAME: imap.de
+      DAVE_MESSSTELLE_CRON: 0 0 * 1/1 * ?
+      DAVE_MESSSTELLE_SHEDLOCK: 4m
+      DAVE_REPORTS_LOGO_ICON: classpath:/pdf/images/kindl.jpg
+      DAVE_REPORTS_LOGO_SUBTITLE: Landeshauptstadt<br/>München<br/><b>Mobilitätsreferat</b>
+      
+      ELASTICSEARCH_HOST: localhost
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_USER: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+      ELASTICSEARCH_HTTP_CA_CERTIFICATE: ""
+      ELASTICSEARCH_CONNECTTIMEOUT: 10
+      ELASTICSEARCH_SOCKETTIMEOUT: 30
+
+      SPRING_FLYWAY_LOCATIONS: classpath:db/migration, classpath:data2
+      SPRING_JPA_HIBERNATE_NAMING_PHYSICAL_STRATEGY: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+      TZ: Europe/Berlin
     ports:
       - "8080:8080"
     depends_on:
@@ -83,6 +100,38 @@ services:
       timeout: 5s
       retries: 120
 
+  dave-frontend:
+    container_name: dave-frontend
+    image: starwitorg/dave-frontend:5.1.0
+    environment:
+      SPRING_PROFILES_ACTIVE: local, no-security
+      SPRING_CLOUD_GATEWAY_ROUTES_0_ID: backend
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: http://dave-backend:8080/
+      SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0: Path=/api/dave-backend-service/**
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_NAME: Retry
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_RETRIES: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_METHODS: GET,POST
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FIRSTBACKOFF: 10ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_MAXBACKOFF: 50ms
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_FACTOR: "2"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_0_ARGS_BACKOFF_BASEDONPREVIOUSVALUE: "false"
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_NAME: RewritePath
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REGEXP: /api/dave-backend-service/(?<urlsegments>.*)
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_1_ARGS_REPLACEMENT: /$\{urlsegments}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_NAME: RemoveResponseHeader
+      SPRING_CLOUD_GATEWAY_ROUTES_0_FILTERS_2_ARGS_NAME: WWW-Authenticate
+    ports:
+      - "8082:8082"
+    depends_on:
+      dave-backend:
+        condition: service_healthy
+    pull_policy: if_not_present
+    restart: on-failure
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://dave-frontend:8082/actuator/health || exit 1" ]
+      interval: 1s
+      timeout: 5s
+      retries: 120
 
 volumes:
   pg_data:
