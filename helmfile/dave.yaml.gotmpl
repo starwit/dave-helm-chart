@@ -300,12 +300,12 @@ releases:
     installed: {{ .Values.components.dave_adapter }}
     namespace: {{ .Values.namespace }}
     chart: starwitorg/dave-adapter-chart
-    version: 5.0.3
+    version: 5.0.5
     needs:
       - backend
     values:
       - image:
-          tag: "5.0.3"
+          tag: "5.0.5"
         app:
           dave_url: http://backend:8080/detector/save-latest-detections
           mapping:
