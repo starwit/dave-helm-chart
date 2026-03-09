@@ -348,3 +348,69 @@ releases:
         #  - name: LOGGING_LEVEL_ROOT
         #    value: DEBUG
 
+  - name: dave-adapter-carmel
+    installed: true
+    namespace: {{ .Values.namespace }}
+    chart: starwitorg/dave-adapter-chart
+    version: 5.0.5
+    needs:
+      - backend
+    values:
+      - image:
+          tag: "5.0.5"
+        app:
+          dave_url: http://backend:8080/detector/save-latest-detections
+          mapping:
+            file: mapping.json
+            content: |
+                [
+                  {
+                    "observationAreaId": "14",
+                    "daveCountingId": "327fb525-6b05-4526-af4a-dbc0220b38d8",
+                    "intersectionMapping": {
+                        "rangeline-citycenter-nb" : "1",
+                        "rangeline-citycenter-wb" : "2",
+                        "rangeline-citycenter-sb" : "3",
+                        "rangeline-citycenter-eb" : "4",
+                        "5" : "",
+                        "6" : "",
+                        "7" : "",
+                        "8" : ""
+                    }
+                  },
+                  {
+                    "observationAreaId": "8",
+                    "daveCountingId": "6e97c001-7982-459f-a7f0-a546e8c7b30e",
+                    "intersectionMapping": {
+                        "northbound" : "1",
+                        "westbound" : "2",
+                        "southbound" : "3",
+                        "eastbound" : "4",
+                        "5" : "",
+                        "6" : "",
+                        "7" : "",
+                        "8" : ""
+                    }
+                  }
+                ]
+          auth: 
+            enabled: {{ .Values.auth.enabled }}
+        spring:
+          security:
+            oauth2:
+              client:
+                registration:
+                  daveclient:
+                    client_id: {{ .Values.auth.api_client_id  }}
+                    client_secret: {{ .Values.auth.api_client_secret  }}
+                provider:
+                  daveprovider:
+                    token_uri: http{{- if .Values.tls }}s{{- end }}://{{ .Values.auth.keycloak_host }}/auth/realms/{{ .Values.auth.realmname }}/protocol/openid-connect/token
+        analytics_db:
+          url: jdbc:postgresql://100.103.33.126:30001/analytics
+          username: {{ .Values.analytics.username }}
+          password: {{ .Values.analytics.password }}
+        extraEnv: |          
+        #  - name: LOGGING_LEVEL_ROOT
+        #    value: DEBUG
+
